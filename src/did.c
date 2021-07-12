@@ -98,10 +98,8 @@ const char *state_str()
     return str[state];
 }
 
-static
-bool create_id_tsx(DIDAdapter *adapter, const char *payload, const char *memo)
+bool create_id_tsx(const char *payload, const char *memo)
 {
-    (void)adapter;
     (void)memo;
 
     payload_buf = strdup(payload);
@@ -495,16 +493,12 @@ int load_feeds_doc(DID *did, void *context)
 
 DIDDocument *local_resolver(DID *did)
 {
-    return DID_Equals(did, feeds_did) ? DIDStore_LoadDID(feeds_didstore, feeds_did) : NULL;
+    return DID_Equals(did, feeds_did) == 1 ? DIDStore_LoadDID(feeds_didstore, feeds_did) : NULL;
 }
 
 int did_init(FeedsConfig *cfg)
 {
-    static DIDAdapter adapter = {
-        .createIdTransaction = create_id_tsx
-    };
     uint8_t nonce[NONCE_BYTES];
-    DIDDocument *doc = NULL;
     DIDURL *vc_url = NULL;
     UserInfo *ui = NULL;
     int rc;
@@ -520,9 +514,9 @@ int did_init(FeedsConfig *cfg)
         goto failure;
     }
 
-    feeds_didstore = DIDStore_Open(cfg->didstore_dir, &adapter);
+    feeds_didstore = DIDStore_Open(cfg->didstore_dir);
     if (!feeds_didstore) {
-        vlogE(TAG_AUTH "Opening DID store failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Opening DID store failed: %s", DIDError_GetLastErrorMessage());
         goto failure;
     }
 
@@ -545,7 +539,7 @@ int did_init(FeedsConfig *cfg)
 
     vlogI(TAG_AUTH "Owner declared: [%s]", feeds_owner_info.did);
 
-    if (!DIDStore_ContainsPrivateIdentity(feeds_didstore)) {
+    if (DIDStore_ContainsRootIdentities(feeds_didstore) != 1) {
         state_set(OWNER_DECLED);
         goto finally;
     }
@@ -565,7 +559,7 @@ int did_init(FeedsConfig *cfg)
 
     vc_url = DIDURL_NewByDid(feeds_did, VC_FRAG);
     if (!vc_url) {
-        vlogE(TAG_AUTH "Getting VC URL failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Getting VC URL failed: %s", DIDError_GetLastErrorMessage());
         goto failure;
     }
 
@@ -590,8 +584,6 @@ finally:
         did_deinit();
     if (vc_url)
         DIDURL_Destroy(vc_url);
-    if (doc)
-        DIDDocument_Destroy(doc);
     deref(ui);
 
     return rc;
@@ -611,11 +603,10 @@ static
 char *gen_tsx_payload()
 {
     DIDBackend_SetLocalResolveHandle(NULL);
-    DIDStore_PublishDID(feeds_didstore, feeds_storepass, feeds_did,
-                        feeeds_auth_key_url, true);
+    DIDDocument_PublishDID(feeds_doc, feeeds_auth_key_url, true, feeds_storepass);
     DIDBackend_SetLocalResolveHandle(local_resolver);
     if (!payload_buf)
-        vlogE(TAG_AUTH "Failed to generate transaction payload: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Failed to generate transaction payload: %s", DIDError_GetLastErrorMessage());
 
     return payload_buf;
 }
@@ -747,6 +738,7 @@ void hdl_imp_did_req(Carrier *c, const char *from, Req *base)
 {
     ImpDIDReq *req = (ImpDIDReq *)base;
     Marshalled *resp_marshal = NULL;
+    RootIdentity *identity = NULL;
     char *mnemo_gen = NULL;
     int rc;
 
@@ -764,7 +756,7 @@ void hdl_imp_did_req(Carrier *c, const char *from, Req *base)
     if (!req->params.mnemo) {
         mnemo_gen = (char *)Mnemonic_Generate("english");
         if (!mnemo_gen) {
-            vlogE(TAG_AUTH "Generating mnemonic failed: %s", DIDError_GetMessage());
+            vlogE(TAG_AUTH "Generating mnemonic failed: %s", DIDError_GetLastErrorMessage());
             ErrResp resp = {
                 .tsx_id = req->tsx_id,
                 .ec     = ERR_INTERNAL_ERROR
@@ -774,12 +766,10 @@ void hdl_imp_did_req(Carrier *c, const char *from, Req *base)
         }
     }
 
-    rc = DIDStore_InitPrivateIdentity(feeds_didstore, feeds_storepass,
-                                      req->params.mnemo ? req->params.mnemo : mnemo_gen,
-                                      req->params.passphrase ? req->params.passphrase : "",
-                                      "english", true);
-    if (rc < 0) {
-        vlogE(TAG_AUTH "Initializing DID store private identity failed: %s", DIDError_GetMessage());
+    identity = RootIdentity_Create(req->params.mnemo ? req->params.mnemo : mnemo_gen,
+            req->params.passphrase ? req->params.passphrase : "", true, feeds_didstore, feeds_storepass);
+    if (!identity) {
+        vlogE(TAG_AUTH "Initializing DID store rootidentity failed: %s", DIDError_GetLastErrorMessage());
         ErrResp resp = {
             .tsx_id = req->tsx_id,
             .ec     = ERR_INTERNAL_ERROR
@@ -788,9 +778,10 @@ void hdl_imp_did_req(Carrier *c, const char *from, Req *base)
         goto finally;
     }
 
-    feeds_doc = DIDStore_NewDIDByIndex(feeds_didstore, feeds_storepass, req->params.idx, NULL);
+    feeds_doc = RootIdentity_NewDIDByIndex(identity, req->params.idx, feeds_storepass, NULL);
+    RootIdentity_Destroy(identity);
     if (!feeds_doc) {
-        vlogE(TAG_AUTH "Newing DID in DID store failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Newing DID in DID store failed: %s", DIDError_GetLastErrorMessage());
         ErrResp resp = {
             .tsx_id = req->tsx_id,
             .ec     = ERR_INTERNAL_ERROR
@@ -860,7 +851,7 @@ Marshalled *process_vc_req(const char *from, IssVCReq *req)
 
     vc_url = DIDURL_NewByDid(feeds_did, VC_FRAG);
     if (!vc_url) {
-        vlogE(TAG_AUTH "Getting VC URL failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Getting VC URL failed: %s", DIDError_GetLastErrorMessage());
         ErrResp resp = {
             .tsx_id = req->tsx_id,
             .ec     = ERR_INTERNAL_ERROR
@@ -871,7 +862,7 @@ Marshalled *process_vc_req(const char *from, IssVCReq *req)
 
     vc = Credential_FromJson(req->params.vc, feeds_did);
     if (!vc) {
-        vlogE(TAG_AUTH "Unmarshalling credential failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Unmarshalling credential failed: %s", DIDError_GetLastErrorMessage());
         ErrResp resp = {
             .tsx_id = req->tsx_id,
             .ec     = ERR_INVALID_PARAMS
@@ -880,8 +871,8 @@ Marshalled *process_vc_req(const char *from, IssVCReq *req)
         goto finally;
     }
 
-    if (!Credential_IsValid(vc)) {
-        vlogE(TAG_AUTH "Credential is invalid: %s", DIDError_GetMessage());
+    if (Credential_IsValid(vc) != 1) {
+        vlogE(TAG_AUTH "Credential is invalid: %s", DIDError_GetLastErrorMessage());
         ErrResp resp = {
             .tsx_id = req->tsx_id,
             .ec     = ERR_INVALID_PARAMS
@@ -906,7 +897,7 @@ Marshalled *process_vc_req(const char *from, IssVCReq *req)
         goto finally;
     }
 
-    if (!DID_Equals(Credential_GetOwner(vc), feeds_did)) {
+    if (DID_Equals(Credential_GetOwner(vc), feeds_did) != 1) {
         char vc_owner_did[ELA_MAX_DID_LEN];
 
         vlogE(TAG_AUTH "Credential owner mismatch. Expected: [%s], actual: [%s]",
@@ -944,7 +935,7 @@ Marshalled *process_vc_req(const char *from, IssVCReq *req)
     }
 
     if (DIDStore_StoreCredential(feeds_didstore, vc) < 0) {
-        vlogE(TAG_AUTH "Storing credential failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Storing credential failed: %s", DIDError_GetLastErrorMessage());
         ErrResp resp = {
             .tsx_id = req->tsx_id,
             .ec     = ERR_INTERNAL_ERROR

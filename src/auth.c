@@ -106,30 +106,30 @@ char *gen_chal(const char *realm, const char *nonce)
 
     chal = DIDDocument_GetJwtBuilder(feeds_doc);
     if (!chal) {
-        vlogE(TAG_AUTH "Editting challenge JWT failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Editting challenge JWT failed: %s", DIDError_GetLastErrorMessage());
         return NULL;
     }
 
     if (!JWTBuilder_SetSubject(chal, "didauth")) {
-        vlogE(TAG_AUTH "Setting subject claim failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Setting subject claim failed: %s", DIDError_GetLastErrorMessage());
         JWTBuilder_Destroy(chal);
         return NULL;
     }
 
     if (!JWTBuilder_SetClaim(chal, "realm", realm)) {
-        vlogE(TAG_AUTH "Setting realm claim failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Setting realm claim failed: %s", DIDError_GetLastErrorMessage());
         JWTBuilder_Destroy(chal);
         return NULL;
     }
 
     if (!JWTBuilder_SetClaim(chal, "nonce", nonce)) {
-        vlogE(TAG_AUTH "Setting nonce claim failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Setting nonce claim failed: %s", DIDError_GetLastErrorMessage());
         JWTBuilder_Destroy(chal);
         return NULL;
     }
 
     if (JWTBuilder_Sign(chal, feeeds_auth_key_url, feeds_storepass)) {
-        vlogE(TAG_AUTH "Signing JWT failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Signing JWT failed: %s", DIDError_GetLastErrorMessage());
         JWTBuilder_Destroy(chal);
         return NULL;
     }
@@ -137,7 +137,7 @@ char *gen_chal(const char *realm, const char *nonce)
     chal_marshal = (char *)JWTBuilder_Compact(chal);
     JWTBuilder_Destroy(chal);
     if (!chal_marshal) {
-        vlogE(TAG_AUTH "Marshalling challenge JWT failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Marshalling challenge JWT failed: %s", DIDError_GetLastErrorMessage());
         return NULL;
     }
 
@@ -195,7 +195,7 @@ void hdl_signin_req_chal_req(Carrier *c, const char *from, Req *base)
 
     if (req->params.vc_req &&
         !(vc = (char *)Credential_ToJson(feeds_vc, true))) {
-        vlogE(TAG_AUTH "Feeds VC to string failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Feeds VC to string failed: %s", DIDError_GetLastErrorMessage());
         ErrResp resp = {
             .tsx_id = req->tsx_id,
             .ec     = ERR_INTERNAL_ERROR
@@ -246,24 +246,24 @@ bool chal_resp_is_valid(JWT *chan_resp, Login **l)
     Login *login;
 
     if (!(vp_str = (char *)JWT_GetClaimAsJson(chan_resp, "presentation"))) {
-        vlogE(TAG_AUTH "Invalid challenge response: get presentation failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Invalid challenge response: get presentation failed: %s", DIDError_GetLastErrorMessage());
         return false;
     }
 
     if (!(vp = Presentation_FromJson(vp_str))) {
-        vlogE(TAG_AUTH "Invalid challenge response: unmarshalling presentation failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Invalid challenge response: unmarshalling presentation failed: %s", DIDError_GetLastErrorMessage());
         free(vp_str);
         return false;
     }
 
-    if (!Presentation_IsValid(vp)) {
-        vlogE(TAG_AUTH "Invalid challenge response presentation: %s", DIDError_GetMessage());
+    if (Presentation_IsValid(vp) != 1) {
+        vlogE(TAG_AUTH "Invalid challenge response presentation: %s", DIDError_GetLastErrorMessage());
         Presentation_Destroy(vp);
         free(vp_str);
         return false;
     }
 
-    if (strcmp(DID_ToString(Presentation_GetSigner(vp), signer_did, sizeof(signer_did)),
+    if (strcmp(DID_ToString(Presentation_GetHolder(vp), signer_did, sizeof(signer_did)),
                JWT_GetIssuer(chan_resp))) {
         vlogE(TAG_AUTH "Invalid challenge response presentation signer and jws issuer mismatch."
               "signer DID: [%s], issuer DID: [%s]", signer_did, JWT_GetIssuer(chan_resp));
@@ -311,42 +311,42 @@ char *gen_access_token(UserInfo *uinfo)
 
     token = DIDDocument_GetJwtBuilder(feeds_doc);
     if (!token) {
-        vlogE(TAG_AUTH "Editting JWT failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Editting JWT failed: %s", DIDError_GetLastErrorMessage());
         return NULL;
     }
 
     if (!JWTBuilder_SetSubject(token, uinfo->did)) {
-        vlogE(TAG_AUTH "Setting access token subject failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Setting access token subject failed: %s", DIDError_GetLastErrorMessage());
         JWTBuilder_Destroy(token);
         return NULL;
     }
 
     if (!JWTBuilder_SetExpiration(token, time(NULL) + ACCESS_TOKEN_VALIDITY_PERIOD)) {
-        vlogE(TAG_AUTH "Setting access token expiration failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Setting access token expiration failed: %s", DIDError_GetLastErrorMessage());
         JWTBuilder_Destroy(token);
         return NULL;
     }
 
     if (!JWTBuilder_SetClaimWithIntegar(token, "uid", uinfo->uid)) {
-        vlogE(TAG_AUTH "Setting access token uid failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Setting access token uid failed: %s", DIDError_GetLastErrorMessage());
         JWTBuilder_Destroy(token);
         return NULL;
     }
 
     if (!JWTBuilder_SetClaim(token, "name", uinfo->name)) {
-        vlogE(TAG_AUTH "Setting access token name failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Setting access token name failed: %s", DIDError_GetLastErrorMessage());
         JWTBuilder_Destroy(token);
         return NULL;
     }
 
     if (!JWTBuilder_SetClaim(token, "email", uinfo->email)) {
-        vlogE(TAG_AUTH "Setting access token email failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Setting access token email failed: %s", DIDError_GetLastErrorMessage());
         JWTBuilder_Destroy(token);
         return NULL;
     }
 
     if (JWTBuilder_Sign(token, feeeds_auth_key_url, feeds_storepass)) {
-        vlogE(TAG_AUTH "Signing access token failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Signing access token failed: %s", DIDError_GetLastErrorMessage());
         JWTBuilder_Destroy(token);
         return NULL;
     }
@@ -355,7 +355,7 @@ char *gen_access_token(UserInfo *uinfo)
     JWTBuilder_Destroy(token);
 
     if (!marshal)
-        vlogE(TAG_AUTH "Marshalling access token failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Marshalling access token failed: %s", DIDError_GetLastErrorMessage());
 
     return marshal;
 }
@@ -430,7 +430,7 @@ void hdl_signin_conf_chal_req(Carrier *c, const char *from, Req *base)
 
     chal_resp = DefaultJWSParser_Parse(req->params.jws);
     if (!chal_resp) {
-        vlogE(TAG_AUTH "Invalid jws in signin_confirm_challenge: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Invalid jws in signin_confirm_challenge: %s", DIDError_GetLastErrorMessage());
         ErrResp resp = {
             .tsx_id = req->tsx_id,
             .ec     = ERR_INVALID_CHAL_RESP
@@ -460,7 +460,7 @@ void hdl_signin_conf_chal_req(Carrier *c, const char *from, Req *base)
 
     if (req->params.vc) {
         if (!(vc = Credential_FromJson(req->params.vc, NULL))) {
-            vlogE(TAG_AUTH "Unmarshalling credential in signin_confirm_challenge: %s", DIDError_GetMessage());
+            vlogE(TAG_AUTH "Unmarshalling credential in signin_confirm_challenge: %s", DIDError_GetLastErrorMessage());
             ErrResp resp = {
                 .tsx_id = req->tsx_id,
                 .ec     = ERR_INVALID_VC
@@ -469,8 +469,8 @@ void hdl_signin_conf_chal_req(Carrier *c, const char *from, Req *base)
             goto finally;
         }
 
-        if (!Credential_IsValid(vc)) {
-            vlogE(TAG_AUTH "Invalid credential in signin_confirm_challenge: %s", DIDError_GetMessage());
+        if (Credential_IsValid(vc) != 1) {
+            vlogE(TAG_AUTH "Invalid credential in signin_confirm_challenge: %s", DIDError_GetLastErrorMessage());
             ErrResp resp = {
                 .tsx_id = req->tsx_id,
                 .ec     = ERR_INVALID_VC
@@ -600,7 +600,7 @@ bool access_token_is_valid(JWT *token)
 
     keyurl = DIDURL_FromString(JWT_GetKeyId(token), NULL);
     if (!keyurl) {
-        vlogE(TAG_AUTH "Getting access token signing key URL failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Getting access token signing key URL failed: %s", DIDError_GetLastErrorMessage());
         goto finally;
     }
 
@@ -639,7 +639,7 @@ UserInfo *create_uinfo_from_access_token(const char *token_marshal)
 
     token = DefaultJWSParser_Parse(token_marshal);
     if (!token) {
-        vlogE(TAG_AUTH "Parsing access token failed: %s", DIDError_GetMessage());
+        vlogE(TAG_AUTH "Parsing access token failed: %s", DIDError_GetLastErrorMessage());
         return NULL;
     }
 

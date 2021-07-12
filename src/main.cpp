@@ -115,7 +115,7 @@ void on_connection_status(Carrier *carrier,
 {
     vlogI(TAG_MAIN "carrier %s", status == CarrierConnectionStatus_Connected ?
                                 "connected" : "disconnected");
-    if(status != CarrierConnectionStatus_Connected) 
+    if(status != CarrierConnectionStatus_Connected)
             trinity::MassDataManager::GetInstance()->clearAllDataPipe();
 }
 
@@ -290,7 +290,7 @@ int transport_init(FeedsConfig *cfg)
     callbacks.friend_request = friend_request_callback;
     callbacks.friend_message = on_receiving_message;
 
-    DIDBackend_InitializeDefault(resolver, cfg->didcache_dir);
+    DIDBackend_InitializeDefault(create_id_tsx, resolver, cfg->didcache_dir);
 
     auto creater = [&]() -> Carrier* {
         vlogD(TAG_MAIN "Create carrier instance.");

@@ -49,7 +49,7 @@ void hdl_iss_vc_req(Carrier *c, const char *from, Req *base);
 void hdl_update_vc_req(Carrier *c, const char *from, Req *base);
 
 DIDDocument *local_resolver(DID *did);
-
+bool create_id_tsx(const char *payload, const char *memo);
 
 #ifdef __cplusplus
 } // extern "C"

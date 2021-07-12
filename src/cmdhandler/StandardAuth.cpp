@@ -28,7 +28,7 @@ namespace trinity {
     if(!(expr)) { \
         Log::E(Log::Tag::Cmd, errDesp); \
         Log::D(Log::Tag::Cmd, "Did sdk errCode:0x%x, errDesc:%s", \
-               DIDError_GetCode(), DIDError_GetMessage()); \
+               DIDError_GetLastErrorCode(), DIDError_GetLastErrorMessage()); \
         CHECK_ERROR(errCode); \
     }
 
@@ -165,8 +165,8 @@ int StandardAuth::onStandardSignIn(std::shared_ptr<Rpc::Request> request,
     auto didDoc = std::shared_ptr<DIDDocument>(docCreater(params.document), docDeleter);
     CHECK_DIDSDK(didDoc != nullptr, ErrCode::AuthBadDidDoc, "Failed to get did document from json.");
 
-    bool valid = DIDDocument_IsValid(didDoc.get());
-    CHECK_DIDSDK(valid, ErrCode::AuthDidDocInvlid, "Did document is invalid.");
+    int valid = DIDDocument_IsValid(didDoc.get());
+    CHECK_DIDSDK(valid == 1, ErrCode::AuthDidDocInvlid, "Did document is invalid.");
 
     auto did = DIDDocument_GetSubject(didDoc.get());
     CHECK_DIDSDK(did, ErrCode::AuthBadDid, "Failed to get did from document.");
@@ -376,8 +376,8 @@ int StandardAuth::checkAuthToken(const std::string& userName, const std::string&
     CHECK_DIDSDK(vp != nullptr, ErrCode::AuthGetPresentationFailed, "Failed to get presentation from json.");
 
     /** check vp **/
-    bool valid = Presentation_IsValid(vp.get());
-    CHECK_DIDSDK(valid, ErrCode::AuthInvalidPresentation, "Failed to check presentation.");
+    int valid = Presentation_IsValid(vp.get());
+    CHECK_DIDSDK(valid == 1, ErrCode::AuthInvalidPresentation, "Failed to check presentation.");
 
     /** check nonce **/
     auto nonce = Presentation_GetNonce(vp.get());
@@ -405,7 +405,7 @@ int StandardAuth::checkAuthToken(const std::string& userName, const std::string&
     CHECK_DIDSDK(vc != nullptr, ErrCode::AuthCredentialParseFailed, "The credential string is error, unable to rebuild to a credential object.");
 
     valid = Credential_IsValid(vc);
-    CHECK_DIDSDK(valid, ErrCode::AuthCredentialInvalid, "The credential isn't valid.");
+    CHECK_DIDSDK(valid == 1, ErrCode::AuthCredentialInvalid, "The credential isn't valid.");
 
     auto instanceDidUrl = Credential_GetId(vc);
     auto instanceDid = DIDURL_GetDid(instanceDidUrl);
